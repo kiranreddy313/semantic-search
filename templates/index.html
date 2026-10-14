@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Semantic Search</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; }
+    form { display: flex; gap: 8px; margin-bottom: 20px; }
+    input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    button { padding: 12px 20px; border: none; border-radius: 6px; background: #2563eb; color: white; font-size: 16px; cursor: pointer; }
+    .result { background: white; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .meta { display: flex; justify-content: space-between; font-size: 13px; color: #6b7280; margin-bottom: 8px; }
+    .score { font-weight: bold; color: #2563eb; }
+    .content { line-height: 1.5; }
+    .message { color: #6b7280; }
+    .error { color: #991b1b; }
+  </style>
+</head>
+<body>
+  <h1>Semantic Search</h1>
+  <p class="message">Ask a question in your own words. Results are matched by meaning, not keywords.</p>
+
+  <form id="search-form">
+    <input id="query" type="text" placeholder="e.g. how do I get a refund?" autocomplete="off">
+    <button type="submit">Search</button>
+  </form>
+
+  <div id="results"></div>
+
+  <script>
+    const form = document.getElementById("search-form");
+    const queryInput = document.getElementById("query");
+    const resultsDiv = document.getElementById("results");
+
+    function showMessage(text, className = "message") {
+      resultsDiv.innerHTML = "";
+      const p = document.createElement("p");
+      p.className = className;
+      p.textContent = text;
+      resultsDiv.appendChild(p);
+    }
+
+    function showResult(result) {
+      const card = document.createElement("div");
+      card.className = "result";
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+
+      const location = document.createElement("span");
+      location.textContent = result.page
+        ? `${result.source} · page ${result.page}`
+        : result.source;
+
+      const score = document.createElement("span");
+      score.className = "score";
+      score.textContent = `similarity ${result.similarity.toFixed(3)}`;
+
+      meta.append(location, score);
+
+      const content = document.createElement("div");
+      content.className = "content";
+      content.textContent = result.content;
+
+      card.append(meta, content);
+      resultsDiv.appendChild(card);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const query = queryInput.value.trim();
+      if (!query) return;
+
+      showMessage("Searching...");
+
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMessage(data.error || "Something went wrong.", "error");
+          return;
+        }
+
+        if (data.results.length === 0) {
+          showMessage("No relevant results found. Try rephrasing your question.");
+          return;
+        }
+
+        resultsDiv.innerHTML = "";
+        data.results.forEach(showResult);
+      } catch (err) {
+        showMessage("Can't reach the server. Is app.py running?", "error");
+      }
+    });
+  </script>
+</body>
+</html>
