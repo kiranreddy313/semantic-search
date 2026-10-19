@@ -4,3 +4,4 @@ pgvector
 python-dotenv
 pypdf
 flask
+anthropic
