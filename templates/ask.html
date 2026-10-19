@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ask Your Documents</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; color: #111827; }
+    nav { margin-bottom: 16px; font-size: 14px; }
+    form { display: flex; gap: 8px; margin-bottom: 20px; }
+    input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    button[type="submit"] { padding: 12px 20px; border: none; border-radius: 6px; background: #2563eb; color: white; font-size: 16px; cursor: pointer; }
+    button:disabled { background: #9ca3af; }
+    .panel { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .panel h2 { font-size: 15px; margin: 0 0 10px; color: #4b5563; }
+    #answer { line-height: 1.6; white-space: pre-wrap; min-height: 24px; }
+    .cite { border: none; background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 0 4px; margin: 0 1px; font-size: 13px; cursor: pointer; }
+    .cite:hover { background: #bfdbfe; }
+    details { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; transition: background 0.3s; }
+    details.highlight { background: #fef9c3; }
+    summary { cursor: pointer; font-size: 14px; }
+    .passage { margin-top: 8px; font-size: 14px; line-height: 1.5; color: #374151; }
+    .meta { font-size: 12px; color: #6b7280; margin-top: 8px; }
+    .error { color: #991b1b; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">Search page</a> · <strong>Ask</strong></nav>
+  <h1>Ask Your Documents</h1>
+
+  <form id="ask-form">
+    <input id="question" type="text" placeholder="e.g. What are the main requirements?" autocomplete="off">
+    <button id="ask-btn" type="submit">Ask</button>
+  </form>
+
+  <div class="panel">
+    <h2>Answer</h2>
+    <div id="answer"></div>
+    <div id="usage" class="meta"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Sources</h2>
+    <div id="sources"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById("ask-form");
+    const questionInput = document.getElementById("question");
+    const askBtn = document.getElementById("ask-btn");
+    const answerEl = document.getElementById("answer");
+    const usageEl = document.getElementById("usage");
+    const sourcesEl = document.getElementById("sources");
+
+    let answerText = "";
+
+    function renderAnswer(text) {
+      answerEl.replaceChildren();
+      const parts = text.split(/(\[\d+\])/);
+      for (const part of parts) {
+        const match = part.match(/^\[(\d+)\]$/);
+        if (match) {
+          const button = document.createElement("button");
+          button.className = "cite";
+          button.textContent = part;
+          button.addEventListener("click", () => showSource(match[1]));
+          answerEl.appendChild(button);
+        } else if (part) {
+          answerEl.appendChild(document.createTextNode(part));
+        }
+      }
+    }
+
+    function renderSources(sources) {
+      sourcesEl.replaceChildren();
+      if (sources.length === 0) {
+        sourcesEl.textContent = "No sources above the similarity threshold.";
+        return;
+      }
+      for (const source of sources) {
+        const details = document.createElement("details");
+        details.id = `source-${source.number}`;
+
+        const summary = document.createElement("summary");
+        summary.textContent = `[${source.number}] ${source.location} · similarity ${source.similarity.toFixed(3)}`;
+
+        const passage = document.createElement("div");
+        passage.className = "passage";
+        passage.textContent = source.content;
+
+        details.append(summary, passage);
+        sourcesEl.appendChild(details);
+      }
+    }
+
+    function showSource(number) {
+      const details = document.getElementById(`source-${number}`);
+      if (!details) return;
+      details.open = true;
+      details.scrollIntoView({ behavior: "smooth", block: "center" });
+      details.classList.add("highlight");
+      setTimeout(() => details.classList.remove("highlight"), 1500);
+    }
+
+    function showError(message) {
+      answerEl.replaceChildren();
+      const p = document.createElement("p");
+      p.className = "error";
+      p.textContent = message;
+      answerEl.appendChild(p);
+    }
+
+    function handleEvent(evt) {
+      if (evt.type === "sources") {
+        renderSources(evt.sources);
+      } else if (evt.type === "text") {
+        answerText += evt.text;
+        renderAnswer(answerText);
+      } else if (evt.type === "done") {
+        if (evt.usage) {
+          usageEl.textContent = `tokens in: ${evt.usage.input}, out: ${evt.usage.output}`;
+        }
+      } else if (evt.type === "error") {
+        showError(evt.message);
+      }
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      answerText = "";
+      answerEl.textContent = "Searching your documents...";
+      usageEl.textContent = "";
+      sourcesEl.replaceChildren();
+      askBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          showError(data.error || "Something went wrong.");
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (line.trim()) handleEvent(JSON.parse(line));
+          }
+        }
+      } catch (err) {
+        showError("Can't reach the server. Is app.py running?");
+      } finally {
+        askBtn.disabled = false;
+        questionInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>

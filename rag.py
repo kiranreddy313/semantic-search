@@ -1,20 +1,11 @@
 import anthropic
 from anthropic import Anthropic
+from rag_core import CLAUDE_MODEL, SYSTEM_PROMPT, TOP_K, build_user_message, describe_location
 
 from common import get_connection, load_model
 from search_engine import search
 
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-TOP_K = 5
-SHOW_PROMPT = False
 
-SYSTEM_PROMPT = """You answer questions using ONLY the documents provided inside <documents> tags.
-
-Rules:
-- If the documents do not contain the answer, reply exactly: "I couldn't find that in the documents." Do not use outside knowledge.
-- After each fact, cite the document number it came from in square brackets, like [1] or [2][3].
-- Keep answers concise: a short paragraph or a few bullet points.
-- Answer in plain text without markdown headings."""
 
 
 def describe_location(result):
